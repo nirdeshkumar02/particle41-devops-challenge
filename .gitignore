@@ -38,3 +38,7 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Internal planning docs
+action_plan.md
+Challenge.md

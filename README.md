@@ -305,8 +305,7 @@ Once chosen, replace every occurrence of `<your-unique-bucket-name>` below with 
 and update the `bucket` value in `terraform/backend.tf` to match.
 
 ```bash
-# 1. Create the S3 bucket for Terraform state
-#    The region must match the region in terraform/backend.tf (us-east-1)
+# 1. Create the S3 bucket for Terraform state. The region must match the region in terraform/backend.tf (us-east-1)
 aws s3api create-bucket --bucket <your-unique-bucket-name> --region us-east-1
 
 # 2. Enable versioning — lets you roll back to a previous state if apply goes wrong
@@ -334,6 +333,11 @@ terraform {
 ```
 
 Once the bucket exists, proceed to the Deployment Instructions below.
+
+> **Skip S3 altogether:** If you want a quick local deployment without the bootstrap,
+> remove the `backend "s3" { ... }` block from `terraform/backend.tf` entirely.
+> Terraform will write state to a local `terraform.tfstate` file instead.
+
 ---
 
 ## 7. Deployment Instructions
@@ -871,37 +875,6 @@ of exposing the raw `*.elb.amazonaws.com` hostname.
 
 ---
 
-### OIDC-based AWS Credentials for GitHub Actions
-
-**What:** Replace the static `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` secrets in GitHub
-with short-lived tokens obtained via OpenID Connect federation. No long-lived credentials
-are stored anywhere.
-
-**Why it matters:** Static IAM user keys never expire, accumulate over time, and are a
-common source of credential leaks. OIDC tokens are scoped to a single workflow run and
-expire automatically.
-
-**How:**
-1. Create an IAM OIDC identity provider for `token.actions.githubusercontent.com`
-2. Create an IAM role with a trust policy that allows only your repository's `push` event:
-```json
-"Condition": {
-  "StringEquals": {
-    "token.actions.githubusercontent.com:sub":
-      "repo:nirdeshkumar02/particle41-devops-challenge:ref:refs/heads/main"
-  }
-}
-```
-3. In your workflow, replace static credential env vars with:
-```yaml
-- uses: aws-actions/configure-aws-credentials@v4
-  with:
-    role-to-assume: arn:aws:iam::<account-id>:role/github-actions-deployer
-    aws-region: us-east-1
-```
-
----
-
 ### Private ECR Registry (replace DockerHub)
 
 **What:** Push and pull the container image from a private AWS ECR repository instead of
@@ -916,25 +889,6 @@ same AWS account and region, and images never leave the AWS network when pulled 
 1. Add `aws_ecr_repository.simpletimeservice` in Terraform
 2. Update the CI/CD workflow to log in to ECR (`aws-actions/amazon-ecr-login`) and push there
 3. Change `container_image` in `terraform.tfvars` to the ECR URI
-
----
-
-### VPC Endpoints for ECR and S3
-
-**What:** Add VPC Gateway and Interface endpoints so that ECS tasks pull images from ECR and
-write state to S3 without traversing the NAT Gateway.
-
-**Why it matters:** Every GB of data leaving the private subnets via NAT Gateway costs
-$0.045/GB. ECR image pulls on every task start add up. A Gateway endpoint for S3 and
-Interface endpoints for `ecr.api` and `ecr.dkr` eliminate that cost entirely and remove
-the internet dependency for image pulls.
-
-**How:** Add to the VPC module call in `terraform/main.tf`:
-```hcl
-enable_s3_endpoint   = true
-enable_ecr_api_endpoint      = true
-enable_ecr_dkr_endpoint      = true
-```
 
 ---
 

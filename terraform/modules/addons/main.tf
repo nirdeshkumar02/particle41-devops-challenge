@@ -138,6 +138,31 @@ resource "helm_release" "aws_lb_controller" {
   ]
 }
 
+data "aws_eks_addon_version" "cloudwatch_observability" {
+  addon_name         = "amazon-cloudwatch-observability"
+  kubernetes_version = var.cluster_version
+  most_recent        = true
+}
+
+resource "aws_eks_addon" "cloudwatch_observability" {
+  cluster_name                = var.cluster_name
+  addon_name                  = "amazon-cloudwatch-observability"
+  addon_version               = data.aws_eks_addon_version.cloudwatch_observability.version
+  service_account_role_arn    = var.cloudwatch_agent_role_arn
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "OVERWRITE"
+
+  depends_on = [
+    aws_eks_addon.vpc_cni,
+    aws_eks_addon.coredns,
+    aws_eks_addon.kube_proxy,
+  ]
+
+  tags = {
+    Name = "${var.name}-addon-cloudwatch-observability"
+  }
+}
+
 resource "helm_release" "cluster_autoscaler" {
   name       = "cluster-autoscaler"
   repository = "https://kubernetes.github.io/autoscaler"

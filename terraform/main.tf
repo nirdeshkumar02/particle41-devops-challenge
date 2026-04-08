@@ -75,6 +75,7 @@ module "addons" {
   vpc_cni_role_arn            = module.irsa.vpc_cni_role_arn
   lb_controller_role_arn      = module.irsa.lb_controller_role_arn
   cluster_autoscaler_role_arn = module.irsa.cluster_autoscaler_role_arn
+  cloudwatch_agent_role_arn   = module.irsa.cloudwatch_agent_role_arn
   vpc_id                      = module.vpc.vpc_id
 
   addon_vpc_cni_version        = var.addon_vpc_cni_version

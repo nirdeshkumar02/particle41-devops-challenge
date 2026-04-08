@@ -62,3 +62,8 @@ variable "helm_lb_controller_version" {
   type        = string
   default     = ""
 }
+
+variable "cloudwatch_agent_role_arn" {
+  description = "IRSA role ARN for the amazon-cloudwatch-observability add-on"
+  type        = string
+}

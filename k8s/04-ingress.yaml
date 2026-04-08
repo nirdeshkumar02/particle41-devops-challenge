@@ -1,0 +1,43 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: simpletimeservice
+  namespace: simpletimeservice
+  labels:
+    app.kubernetes.io/name: simpletimeservice
+    app.kubernetes.io/part-of: particle41-devops-challenge
+  annotations:
+    # ALB Controller — internet-facing ALB in public subnets
+    alb.ingress.kubernetes.io/scheme: internet-facing
+
+    # Route traffic directly to pod IPs (avoids double-hop through kube-proxy)
+    alb.ingress.kubernetes.io/target-type: ip
+
+    # Health check on the /health endpoint
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/healthcheck-port: "8080"
+    alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
+
+    # Subnets are auto-discovered via the kubernetes.io/role/elb=1 tag
+    # set on public subnets in the VPC Terraform module
+
+    # Listen on port 80
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+
+    # Tag the ALB for identification
+    alb.ingress.kubernetes.io/tags: >-
+      Project=particle41,Environment=production,ManagedBy=kubernetes
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: simpletimeservice
+                port:
+                  name: http

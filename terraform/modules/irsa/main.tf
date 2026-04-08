@@ -166,7 +166,8 @@ resource "aws_iam_role" "cloudwatch_agent" {
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
-          "${local.oidc_issuer}:sub" = "system:serviceaccount:simpletimeservice:simpletimeservice-sa"
+          # amazon-cloudwatch-observability addon creates this SA in the amazon-cloudwatch namespace
+          "${local.oidc_issuer}:sub" = "system:serviceaccount:amazon-cloudwatch:cloudwatch-agent"
           "${local.oidc_issuer}:aud" = "sts.amazonaws.com"
         }
       }

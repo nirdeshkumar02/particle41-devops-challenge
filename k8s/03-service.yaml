@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: simpletimeservice
+  namespace: simpletimeservice
+  labels:
+    app.kubernetes.io/name: simpletimeservice
+    app.kubernetes.io/part-of: particle41-devops-challenge
+spec:
+  type: ClusterIP
+  selector:
+    app: simpletimeservice
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

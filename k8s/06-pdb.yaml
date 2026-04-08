@@ -1,0 +1,13 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: simpletimeservice
+  namespace: simpletimeservice
+  labels:
+    app.kubernetes.io/name: simpletimeservice
+    app.kubernetes.io/part-of: particle41-devops-challenge
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: simpletimeservice

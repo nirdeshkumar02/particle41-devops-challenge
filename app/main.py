@@ -1,15 +1,13 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 
 from fastapi import FastAPI, Request
 
 app = FastAPI()
 
-IST = timezone(timedelta(hours=5, minutes=30))
-
 
 @app.get("/")
 async def root(request: Request) -> dict:
-    """Return the current IST timestamp and the visitor's IP address.
+    """Return the current UTC timestamp and the visitor's IP address.
 
     The IP is extracted from the X-Forwarded-For header (set by the ALB)
     so the real client IP is returned rather than the ALB's address.
@@ -19,7 +17,7 @@ async def root(request: Request) -> dict:
     ip: str = forwarded_for.split(",")[0].strip() if forwarded_for else request.client.host
 
     return {
-        "timestamp": datetime.now(IST).isoformat(),
+        "timestamp": datetime.now().isoformat(),
         "ip": ip,
     }
 

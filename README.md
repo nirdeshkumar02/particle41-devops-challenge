@@ -57,7 +57,7 @@ The container runs as a non-root user (`nirdesh`, UID 1000) and is published to 
 │   ├── actions/
 │   │   └── docker-setup/      # Composite: Buildx + optional DockerHub login
 │   └── workflows/
-│       └── docker-publish.yml # CI/CD pipeline
+│       └── ci-cd.yml          # CI/CD pipeline
 └── architecture.png   # Architecture diagram (this file)
 ```
 
@@ -263,14 +263,18 @@ Once chosen, replace every occurrence of `<your-unique-bucket-name>` below with 
 and update the `bucket` value in `terraform/backend.tf` to match.
 
 ```bash
-# 1. Create the S3 bucket for Terraform state. The region must match the region in terraform/backend.tf (us-east-1)
+# 1. Create the S3 bucket for Terraform state. Region must match backend.tf (us-east-1)
 aws s3api create-bucket --bucket <your-unique-bucket-name> --region us-east-1
 
 # 2. Enable versioning — lets you roll back to a previous state if apply goes wrong
-aws s3api put-bucket-versioning --bucket <your-unique-bucket-name> --versioning-configuration Status=Enabled
+aws s3api put-bucket-versioning \
+  --bucket <your-unique-bucket-name> \
+  --versioning-configuration Status=Enabled
 
 # 3. Enable server-side encryption — state files can contain sensitive resource IDs
-aws s3api put-bucket-encryption --bucket <your-unique-bucket-name> --server-side-encryption-configuration '{
+aws s3api put-bucket-encryption \
+  --bucket <your-unique-bucket-name> \
+  --server-side-encryption-configuration '{
     "Rules": [{
       "ApplyServerSideEncryptionByDefault": {
         "SSEAlgorithm": "AES256"
@@ -278,13 +282,15 @@ aws s3api put-bucket-encryption --bucket <your-unique-bucket-name> --server-side
     }]
   }'
 
-# 4. Update `terraform/backend.tf` with your bucket name, then verify the change
-terraform {
-  backend "s3" {
-    bucket       = <your-unique-bucket-name>
-    ...
-  }
-}
+# 4. Block all public access to the state bucket (security best practice)
+aws s3api put-public-access-block \
+  --bucket <your-unique-bucket-name> \
+  --public-access-block-configuration \
+    "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+
+# 5. Open terraform/backend.tf and set the bucket value to your chosen name:
+#      bucket = "<your-unique-bucket-name>"
+#    Everything else in that file can stay as-is.
 ```
 
 Once the bucket exists, proceed to the Deployment Instructions below.
@@ -321,13 +327,9 @@ backend "s3" {
 
 ### Step 3 — Review `terraform/terraform.tfvars`
 
-All variables have sensible defaults. The file is fully annotated below — change any value
-before deploying if needed. The most common change is `container_image` if you want to deploy
-your own image instead of the pre-built one.
+All variables are defined with sensible defaults and are fully documented below. You can override any value before deployment as needed. The most commonly updated variable is `container_image`, especially if you want to deploy your own image instead of the default pre-built one.
 
-All variables are declared in [terraform/variables.tf](terraform/variables.tf).
-The values below are from [terraform/terraform.tfvars](terraform/terraform.tfvars) —
-edit that file to customise your deployment.
+All input variables are declared in [terraform/variables.tf](terraform/variables.tf), and their corresponding values are defined in [terraform/terraform.tfvars](terraform/terraform.tfvars). Update the `terraform.tfvars` file to customize the deployment as required.
 
 | Variable | Value in tfvars | Description |
 |---|---|---|
@@ -340,7 +342,7 @@ edit that file to customise your deployment.
 | `availability_zones` | `["us-east-1a", "us-east-1b"]` | Exactly 2 AZs required |
 | `public_subnet_cidrs` | `["10.0.0.0/20", "10.0.16.0/20"]` | Public subnets — ALB and NAT Gateway |
 | `private_subnet_cidrs` | `["10.0.128.0/20", "10.0.144.0/20"]` | Private subnets — ECS tasks |
-| `container_image` | `"nirdeshkumar02/simpletimeservice:0.0.4"` | Full image reference including tag |
+| `container_image` | `"nirdeshkumar02/simpletimeservice:0.0.1"` | Full image reference including tag |
 | `container_port` | `8080` | Port the container listens on |
 | `health_check_path` | `"/health"` | HTTP path for ALB and container health checks |
 | `task_cpu` | `256` | Total task CPU (256 units = 0.25 vCPU) |
@@ -564,7 +566,7 @@ docker run -d --name simpletimeservice -p 8080:8080 nirdeshkumar02/simpletimeser
 
 ## 10. GitHub Actions CI/CD Setup
 
-The pipeline lives in [.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml).
+The pipeline lives in [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml).
 It uses a reusable composite action — [docker-setup](.github/actions/docker-setup/action.yml)
 — to avoid duplicating Buildx setup and DockerHub login across the three jobs.
 
@@ -592,30 +594,43 @@ before the pipeline can push images.
 
 ### When the Pipeline Triggers
 
-The workflow file declares `paths: ['app/**']` for push and pull_request events, meaning
-the pipeline only runs when files inside the `app/` directory change. Changing only Terraform
-files does **not** trigger a build.
+The pipeline triggers on three event types: any pull request targeting `main`, any push to
+`main`, and any published GitHub Release. There is no path filter — the pipeline runs
+regardless of which files changed. All three events run both `build-and-test` and
+`terraform-check` in parallel. The publishing jobs (`push-main`, `push-release`) only run
+after both CI jobs pass.
 
-| Event | Path filter | Jobs that run | Tags pushed to DockerHub | Usage |
-|---|---|---|---|---|
-| Pull request to `main` | `app/**` | `build-and-test` only | None — CI gates without publishing | NO |
-| Push to `main` | `app/**` | `build-and-test` → `push-main` | `:<7-char-git-sha>` **and** `:main`  | Staging/Development |
-| GitHub Release published | *(any file)* | `build-and-test` → `push-release` | `:<version>` **and** `:latest` | Production |
+| Event | Jobs that run | Tags pushed to DockerHub | Usage |
+|---|---|---|---|
+| Pull request to `main` | `build-and-test` + `terraform-check` | None — CI gates without publishing | Code and Terraform validation only |
+| Push to `main` | `build-and-test` + `terraform-check` → `push-main` | `:<7-char-sha>` **and** `:main` | Development / staging image |
+| GitHub Release published | `build-and-test` + `terraform-check` → `push-release` | `:<version>` **and** `:latest` | Production release image |
+
+### What the `terraform-check` Job Validates
+
+Every pipeline run — including PRs — runs Terraform validation:
+
+1. **`terraform fmt -check -recursive`** — fails if any `.tf` file is not properly formatted
+2. **`terraform init -backend=false`** — downloads providers without connecting to the S3 backend
+3. **`terraform validate`** — checks configuration syntax and internal consistency
+4. **`terraform plan`** (PRs only) — previews infrastructure changes; requires AWS credentials configured as secrets
 
 ### What the `build-and-test` Job Validates
 
-Every pipeline run — including PRs — must pass these three checks before any image is pushed:
+Every pipeline run — including PRs — must pass these checks before any image is pushed:
 
 1. **API response check** — `curl http://localhost:8080/` output must contain both `timestamp` and `ip`
 2. **Health check** — `curl http://localhost:8080/health` output must contain `"ok"`
 3. **Non-root enforcement** — `docker exec simpletimeservice whoami` must return `nirdesh`
    (the pipeline fails with exit 1 if it returns `root`)
+4. **Trivy security scan** — `aquasecurity/trivy-action@v0.20.0` scans the built image and fails the
+   job if any `HIGH` or `CRITICAL` CVEs are found (see [Extra Credit Features](#12-extra-credit-features))
 
 ### Verifying a Pipeline Run
 
 1. Open your repository on GitHub
 2. Click the **Actions** tab
-3. Click the workflow run named **Build and Push**
+3. Click the workflow run named **CI-CD**
 4. Expand each job (`build-and-test`, `push-main` or `push-release`) to see per-step logs
 5. After a successful `push-main` run, confirm the image on DockerHub:
 
@@ -656,6 +671,16 @@ nirdeshkumar02/simpletimeservice:latest  ← floating latest pointer
 
 > Every image pushed by the pipeline is built for both `linux/amd64` and `linux/arm64`,
 > so it runs natively on Intel/AMD servers and Apple Silicon (M1/M2/M3) without emulation.
+
+---
+
+## 11. Terraform Variables Reference
+
+All input variables are declared in [terraform/variables.tf](terraform/variables.tf) with
+descriptions and defaults. Concrete values for this deployment are set in
+[terraform/terraform.tfvars](terraform/terraform.tfvars).
+The full annotated table appears in [Step 3 of the Deployment Instructions](#step-3--review-terraformterraformtfvars).
+Use `terraform apply -var="name=value"` to override any single variable without editing the file.
 
 ---
 
@@ -716,13 +741,21 @@ item or an additional production enhancement.
 ---
 
 **GitHub Actions CI/CD pipeline** — *Challenge extra credit*
-- **File:** `.github/workflows/docker-publish.yml`
-- Three jobs: `build-and-test` (every push/PR), `push-main` (merges to `main`),
-  `push-release` (GitHub Releases)
-- Path filter `app/**` prevents unnecessary runs when only Terraform files change
+- **File:** `.github/workflows/ci-cd.yml`
+- Four jobs: `build-and-test` and `terraform-check` (every push/PR), `push-main` (merges to
+  `main`), `push-release` (GitHub Releases)
 - Multi-arch builds: `platforms: linux/amd64,linux/arm64` via `docker/build-push-action@v6`
 - Reusable composite action `.github/actions/docker-setup/` avoids duplicating Buildx
-  setup and DockerHub login across all three jobs
+  setup and DockerHub login across all three publishing jobs
+
+---
+
+**Trivy image vulnerability scan** — *Additional production enhancement*
+- **File:** `.github/workflows/ci-cd.yml` · **Step:** `Security scan (Trivy)` in `build-and-test`
+- **Config:** `aquasecurity/trivy-action@v0.20.0`, `severity: HIGH,CRITICAL`
+- Runs on every push and PR — the pipeline fails immediately if the built image contains any
+  `HIGH` or `CRITICAL` CVE. The scan targets the locally-built `:test` image so no DockerHub
+  push is needed to gate on image quality.
 
 ---
 
@@ -892,24 +925,6 @@ capacity_provider_strategy {
   weight            = 1
   base              = 1   # always keep at least 1 On-Demand task
 }
-```
-
----
-
-### Image Vulnerability Scanning in CI
-
-**What:** Add a Trivy scan step to the `build-and-test` job that fails the pipeline if the
-image contains any `HIGH` or `CRITICAL` CVEs.
-
-**How:** Insert after the build step in `.github/workflows/docker-publish.yml`:
-```yaml
-- name: Scan image for vulnerabilities
-  uses: aquasecurity/trivy-action@master
-  with:
-    image-ref: simpletimeservice:test
-    format: table
-    exit-code: '1'
-    severity: HIGH,CRITICAL
 ```
 
 ---

@@ -17,10 +17,9 @@ containerised with Docker and deployed to AWS ECS Fargate via Terraform.
 8. [Verify the Application](#8-verify-the-application)
 9. [Running the App Locally](#9-running-the-app-locally)
 10. [GitHub Actions CI/CD Setup](#10-github-actions-cicd-setup)
-11. [Terraform Variables Reference](#11-terraform-variables-reference)
-12. [Extra Credit Features](#12-extra-credit-features)
-13. [Future Enhancements](#13-future-enhancements)
-14. [Cleanup](#14-cleanup)
+11. [Extra Credit Features](#11-extra-credit-features)
+12. [Future Enhancements](#12-future-enhancements)
+13. [Cleanup](#13-cleanup)
 
 ---
 
@@ -680,17 +679,7 @@ nirdeshkumar02/simpletimeservice:latest  ← floating latest pointer
 
 ---
 
-## 11. Terraform Variables Reference
-
-All input variables are declared in [terraform/variables.tf](terraform/variables.tf) with
-descriptions and defaults. Concrete values for this deployment are set in
-[terraform/terraform.tfvars](terraform/terraform.tfvars).
-The full annotated table appears in [Step 3 of the Deployment Instructions](#step-3--review-terraformterraformtfvars).
-Use `terraform apply -var="name=value"` to override any single variable without editing the file.
-
----
-
-## 12. Extra Credit Features
+## 11. Extra Credit Features
 
 Each entry below lists: the feature, where it is implemented (file · resource name), the
 exact configuration values in use, and whether it was a specified challenge extra credit
@@ -804,7 +793,7 @@ item or an additional production enhancement.
 
 ---
 
-## 13. Future Enhancements
+## 12. Future Enhancements
 
 This section documents improvements that would be made before promoting this deployment to
 a customer-facing production environment. Nothing here is required by the challenge — they are
@@ -935,7 +924,7 @@ capacity_provider_strategy {
 
 ---
 
-## 14. Cleanup
+## 13. Cleanup
 
 ```bash
 # Navigate to the terraform directory
